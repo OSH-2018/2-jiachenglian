@@ -5,36 +5,22 @@
 #include <sys/types.h>
 #include <stdlib.h>
 
-void execute_pipe(int index, char *args[])
+struct cmd
 {
-    struct cmd
-    {
-        int argc;  //单个管道参数个数
-        char *argv[128];
-    }*cmdlist[10];
-    int num = 0;//管道数
+    int argc;  //一个管道参数个数
+    char *argv[128];//命令参数
+}*cmdlist[10];
+
+void execute_pipe(int index, int num)
+{
     
-    for (int i=0; args[i]; i++)
-    {
-        
-        cmdlist[num] = (struct cmd*)malloc(sizeof(struct cmd));
-        cmdlist[num]->argc = 0;
-        memset(cmdlist[num]->argv, 0, sizeof(char*)*128);
-        for (int j=0; args[i]&&(strcmp(args[i], "|") != 0); i++,j++)
-        {
-            cmdlist[num]->argc++;
-            cmdlist[num]->argv[j] = (char*)malloc(sizeof(char)*strlen(args[i]));
-            strcpy(cmdlist[num]->argv[j], args[i]);
-        }
-        num++;
-        if (!args[i]) break;
-    }
     
     if (index == num - 1)
         execvp(cmdlist[index]->argv[0], cmdlist[index]->argv);
     int fd[2];
     pipe(fd);//创建管道
-    if (fork() == 0)
+	pid_t pid = fork();
+    if (pid == 0)
     {
         dup2(fd[1], STDOUT_FILENO);
         close(fd[0]);
@@ -44,7 +30,9 @@ void execute_pipe(int index, char *args[])
     dup2(fd[0], STDIN_FILENO);
     close(fd[0]);
     close(fd[1]);
-    execute_pipe(index + 1, args);
+	int exitstatus;
+	while(wait(&exitstatus)!=pid);
+    execute_pipe(index + 1, num);
 }
 
 int main() {
@@ -103,10 +91,28 @@ int main() {
         }
         
         /* 外部命令 */
+        
+        int num = 0;//管道数
+        for (int i=0; args[i]; i++)
+        {
+            
+            cmdlist[num] = (struct cmd*)malloc(sizeof(struct cmd));
+            cmdlist[num]->argc = 0;
+            memset(cmdlist[num]->argv, 0, sizeof(char*)*128);
+            for (int j=0; args[i]&&(strcmp(args[i], "|") != 0); i++,j++)
+            {
+                cmdlist[num]->argc++;
+                cmdlist[num]->argv[j] = (char*)malloc(sizeof(char)*strlen(args[i]));
+                strcpy(cmdlist[num]->argv[j], args[i]);
+            }
+            num++;
+            if (!args[i]) break;
+        }
+        
         pid_t pid = fork();
         if (pid == 0) {
             /* 子进程 */
-            execute_pipe(0, args);
+            execute_pipe(0, num);
             /* execvp失败 */
             return 255;
         }
@@ -114,4 +120,3 @@ int main() {
         wait(NULL);
     }
 }
-
